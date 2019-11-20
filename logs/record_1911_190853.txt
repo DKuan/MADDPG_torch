@@ -1,0 +1,5 @@
+save model time:1911_190919 step:51000, var:0.9298885932642732 collision_cnt 0
+save model time:1911_190927 step:58000, var:0.8792458599972444 collision_cnt 0
+save model time:1911_190935 step:65000, var:0.8313611844710389 collision_cnt 0
+save model time:1911_190944 step:72000, var:0.7860843598936633 collision_cnt 0
+save model time:1911_190953 step:79000, var:0.7432733598966319 collision_cnt 0
