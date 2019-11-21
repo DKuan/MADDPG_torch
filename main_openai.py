@@ -68,7 +68,7 @@ def update_trainers(agents_cur, agents_tar, tao):
         agent_t.load_state_dict(state_dict_t)
     return agents_tar
 
-def agents_train(game_step, update_cnt, memory, obs_size, \
+def agents_train(arglist, game_step, update_cnt, memory, obs_size, action_size, \
                 actors_cur, actors_tar, critics_cur, critics_tar, optimizers_a, optimizers_c):
     """ 
     use this func to make the "main" func clean
@@ -82,8 +82,6 @@ def agents_train(game_step, update_cnt, memory, obs_size, \
         if update_cnt == 0: print('\r=start training ...'+' '*100)
         # update the target par using the cur
         update_cnt += 1
-        actors_tar = update_trainers(actors_cur, actors_tar, arglist.tao) 
-        critics_tar = update_trainers(critics_cur, critics_tar, arglist.tao) 
 
         for agent_idx, (actor_c, actor_t, critic_c, critic_t, opt_a, opt_c) in \
             enumerate(zip(actors_cur, actors_tar, critics_cur, critics_tar, optimizers_a, optimizers_c)):
@@ -96,30 +94,42 @@ def agents_train(game_step, update_cnt, memory, obs_size, \
             # use the date to update the CRITIC
             rew = torch.tensor(_rew_n, device=arglist.device, dtype=torch.float) # set the rew to gpu
             done_n = torch.tensor(~_done_n, dtype=torch.float, device=arglist.device) # set the rew to gpu
-            action_cur = torch.from_numpy(_action_n).to(arglist.device, torch.float)
+            action_cur_o = torch.from_numpy(_action_n).to(arglist.device, torch.float)
             obs_n_o = torch.from_numpy(_obs_n_o).to(arglist.device, torch.float)
             obs_n_n = torch.from_numpy(_obs_n_n).to(arglist.device, torch.float)
             action_tar = torch.cat([a_t(obs_n_n[:, obs_size[idx][0]:obs_size[idx][1]]).detach() \
                 for idx, a_t in enumerate(actors_tar)], dim=1)
-            q = critic_c(obs_n_o, action_cur).reshape(-1)
+            q = critic_c(obs_n_o, action_cur_o).reshape(-1)
             q_ = critic_t(obs_n_n, action_tar).reshape(-1)
-            loss_c = torch.nn.MSELoss()(q, q_*arglist.gamma*done_n + rew)
+            tar_value = q_*arglist.gamma*done_n + rew
+            loss_c = torch.nn.MSELoss()(q, tar_value)
             opt_c.zero_grad()
             loss_c.backward()
             nn.utils.clip_grad_norm_(critic_c.parameters(), arglist.max_grad_norm)
             opt_c.step()
 
             # use the data to update the ACTOR
-            policy_actor = torch.cat([a_c(obs_n_o[:, obs_size[idx][0]:obs_size[idx][1]]) \
-                for idx, a_c in enumerate(actors_cur)], dim=1)
-            loss_pse = torch.mul(1e-3, torch.mean(torch.pow(policy_actor, 2)))
-            loss_a = torch.mul(-1, critic_c(obs_n_o, policy_actor))
-            loss_a = torch.mean(loss_a)
+            # There is no need to cal other agent's action
+            # policy_all = [actors_cur[ac_idx](obs_n_o[:, obs_size[ac_idx][0]:obs_size[ac_idx][1]], batch_flag=True) \
+            #     for ac_idx in range(actors_cur.__len__())]
+            # policy_actor = torch.cat(policy_all, dim=1)
+            #agent_own_policy = policy_all[agent_idx].detach().cpu().numpy()
+            #loss_pse = 1e-3*np.mean(np.power(agent_own_policy, 2))
+            policy_c_new = actor_c(obs_n_o[:, obs_size[agent_idx][0]:obs_size[agent_idx][1]])
+            action_cur_o[:, action_size[agent_idx][0]:action_size[agent_idx][1]] = policy_c_new 
+            loss_pse = torch.mean(torch.pow(policy_c_new, 2))
+            loss_a = torch.mul(-1, torch.mean(critic_c(obs_n_o, action_cur_o)))
             opt_a.zero_grad()
-            (loss_pse+loss_a).backward()
+            (1e-3*loss_pse+loss_a).backward()
             nn.utils.clip_grad_norm_(actor_c.parameters(), arglist.max_grad_norm)
             opt_a.step()
-        
+
+            # record the data
+            # file_text = open('logs/loss_record_{}'.format(agent_idx), 'a')
+            # file_text.writelines('actor loss:{} critic loss:{} action_mse:{} \n'.format(loss_a.detach().cpu().numpy(), \
+            #      loss_c.detach().cpu().numpy(), policy_all[agent_idx][0], dim=0).detach().cpu().numpy()))
+            # file_text.close()
+
         # save the model to the path_dir ---cnt by update number
         if update_cnt > arglist.start_save_model and update_cnt % arglist.fre4save_model == 0:
             time_now = time.strftime('%y%m_%d%H%M')
@@ -134,6 +144,10 @@ def agents_train(game_step, update_cnt, memory, obs_size, \
                 torch.save(a_t, os.path.join(model_file_dir, 'a_t_{}.pt'.format(agent_idx)))
                 torch.save(c_c, os.path.join(model_file_dir, 'c_c_{}.pt'.format(agent_idx)))
                 torch.save(c_t, os.path.join(model_file_dir, 'c_t_{}.pt'.format(agent_idx)))
+
+        # update the tar par
+        actors_tar = update_trainers(actors_cur, actors_tar, arglist.tao) 
+        critics_tar = update_trainers(critics_cur, critics_tar, arglist.tao) 
 
     return update_cnt, actors_cur, actors_tar, critics_cur, critics_tar
 
@@ -150,7 +164,7 @@ def train(arglist):
 
     """step2: create agents"""
     obs_shape_n = [env.observation_space[i].shape[0] for i in range(env.n)]
-    action_shape_n = [env.action_space[i].n-1 for i in range(env.n)] # no need for stop bit
+    action_shape_n = [env.action_space[i].n for i in range(env.n)] # no need for stop bit
     num_adversaries = min(env.n, arglist.num_adversaries)
     actors_cur, critics_cur, actors_tar, critics_tar, optimizers_a, optimizers_c = \
         get_trainers(env, num_adversaries, obs_shape_n, action_shape_n, arglist)
@@ -174,12 +188,17 @@ def train(arglist):
     episode_rewards = [0.0] # sum of rewards for all agents
     agent_rewards = [[0.0] for _ in range(env.n)] # individual agent reward
     obs_size = []
-    head, end = 0, 0
-    for obs_shape in obs_shape_n:
-        end = end + obs_shape
-        range_obs = (head, end)
-        obs_size.append(range_obs)
-        head = end
+    action_size = []
+    head_o, head_a, end_o, end_a = 0, 0, 0, 0
+    for obs_shape, action_shape in zip(obs_shape_n, action_shape_n):
+        end_o = end_o + obs_shape
+        end_a = end_a + action_shape 
+        range_o = (head_o, end_o)
+        range_a = (head_a, end_a)
+        obs_size.append(range_o)
+        action_size.append(range_a)
+        head_o = end_o
+        head_a = end_a
 
     print('=3 starting iterations ...')
     print('=============================')
@@ -194,21 +213,20 @@ def train(arglist):
 
         for episode_cnt in range(arglist.per_episode_max_len):
             # get action
-            out = [agent(torch.from_numpy(obs).to(arglist.device, torch.float)).detach().cpu().numpy() \
+            action_n = [agent(torch.from_numpy(obs).to(arglist.device, torch.float)).detach().cpu().numpy() \
                 for agent, obs in zip(actors_cur, obs_n)]
-            action_n = [np.concatenate([np.array([0]), a_n])  for a_n in out]
 
             # interact with env
             new_obs_n, rew_n, done_n, info_n = env.step(action_n)
 
             # save the experience
-            memory.add(obs_n, np.concatenate(out), rew_n , new_obs_n, done_n)
+            memory.add(obs_n, np.concatenate(action_n), rew_n , new_obs_n, done_n)
             episode_rewards[-1] += np.sum(rew_n)
             for i, rew in enumerate(rew_n): agent_rewards[i][-1] += rew
 
             # train our agents 
             update_cnt, actors_cur, actors_tar, critics_cur, critics_tar = agents_train(\
-                game_step, update_cnt, memory, obs_size, \
+                arglist, game_step, update_cnt, memory, obs_size, action_size, \
                 actors_cur, actors_tar, critics_cur, critics_tar, optimizers_a, optimizers_c)
 
             # update the obs_n

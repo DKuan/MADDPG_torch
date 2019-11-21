@@ -1,1 +1,0 @@
-save model time:1911_172303 step:264000, var:0.07999968317304154 collision_cnt 0

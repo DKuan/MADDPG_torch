@@ -12,7 +12,7 @@ time_now = time.strftime('%y%m_%d%H%M')
 def parse_args():
     parser = argparse.ArgumentParser("reinforcement learning experiments for multiagent environments")
     # environment
-    parser.add_argument("--scenario_name", type=str, default="simple_spread", help="name of the scenario script")
+    parser.add_argument("--scenario_name", type=str, default="simple_tag", help="name of the scenario script")
     parser.add_argument("--start_time", type=str, default=time_now, help="the time when start the game")
     parser.add_argument("--per_episode_max_len", type=int, default=45, help="maximum episode length")
     parser.add_argument("--max_episode", type=int, default=150000, help="maximum episode length")
@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument("--var_discount", type=float, default=0.999998, help="the discount for var")
     parser.add_argument("--tao", type=int, default=0.01, help="how depth we exchange the par of the nn")
     parser.add_argument("--lr_a", type=float, default=1e-2, help="learning rate for adam optimizer")
-    parser.add_argument("--lr_c", type=float, default=8e-3, help="learning rate for adam optimizer")
+    parser.add_argument("--lr_c", type=float, default=1e-2, help="learning rate for adam optimizer")
     parser.add_argument("--gamma", type=float, default=0.97, help="discount factor")
     parser.add_argument("--batch_size", type=int, default=1256, help="number of episodes to optimize at the same time")
     parser.add_argument("--memory_size", type=int, default=1e6, help="number of data stored in the memory")

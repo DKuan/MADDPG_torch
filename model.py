@@ -82,9 +82,13 @@ class openai_critic(abstract_agent):
         super(openai_critic, self).__init__()
         self.linear_o_c1 = nn.Linear(obs_shape_n, args.num_units_openai)
         self.linear_a_c1 = nn.Linear(action_shape_n, args.num_units_openai)
-        self.linear_c2 = nn.Linear(args.num_units_openai*2, args.num_units_openai)
+        self.linear_c1 = nn.Linear(action_shape_n+obs_shape_n, args.num_units_openai)
+        self.linear_c1.weight.data.normal_(0, 0.1)
+        self.linear_c2 = nn.Linear(args.num_units_openai, args.num_units_openai)
+        self.linear_c2.weight.data.normal_(0, 0.1)
         self.linear_c = nn.Linear(args.num_units_openai, 1)
-        self.reset_parameters()
+        self.linear_c.weight.data.normal_(0, 0.1)
+        #self.reset_parameters()
 
         self.LReLU = nn.LeakyReLU(0.01)
         self.tanh= nn.Tanh()
@@ -101,9 +105,10 @@ class openai_critic(abstract_agent):
         """
         input_g: input_global, input features of all agents
         """
-        x_o = self.LReLU(self.linear_o_c1(obs_input))
-        x_a = self.LReLU(self.linear_a_c1(action_input))
-        x_cat = torch.cat([x_o, x_a], dim=1)
+        # x_o = self.LReLU(self.linear_o_c1(obs_input))
+        # x_a = self.LReLU(self.linear_a_c1(action_input))
+        #x_cat = torch.cat([x_o, x_a], dim=1)
+        x_cat = self.LReLU(self.linear_c1(torch.cat([obs_input, action_input], dim=1)))
         x = self.LReLU(self.linear_c2(x_cat))
         value = self.linear_c(x)
         return value
@@ -112,9 +117,12 @@ class openai_actor(abstract_agent):
     def __init__(self, num_inputs, action_size, args):
         super(openai_actor, self).__init__()
         self.linear_a1 = nn.Linear(num_inputs, args.num_units_openai)
+        self.linear_a1.weight.data.normal_(0, 0.1)
         self.linear_a2 = nn.Linear(args.num_units_openai, args.num_units_openai)
+        self.linear_a2.weight.data.normal_(0, 0.1)
         self.linear_a = nn.Linear(args.num_units_openai, action_size)
-        self.reset_parameters()
+        self.linear_a.weight.data.normal_(0, 0.1)
+        #self.reset_parameters()
         # Activation func init
         self.LReLU = nn.LeakyReLU(0.01)
         self.tanh= nn.Tanh()
@@ -130,6 +138,7 @@ class openai_actor(abstract_agent):
     def forward(self, input):
         """
         The forward func defines how the data flows through the graph(layers)
+        flag: 0 sigle input 1 batch input
         """
         x = self.LReLU(self.linear_a1(input))
         #x = self.tanh(x)
@@ -137,5 +146,5 @@ class openai_actor(abstract_agent):
         #x = self.tanh(x)
         policy = self.linear_a(x)
         u = torch.rand_like(policy)
-        policy = F.softmax(policy - torch.log(-torch.log(u)), dim=0) 
+        policy = F.softmax(policy - torch.log(-torch.log(u)), dim=-1) 
         return policy
