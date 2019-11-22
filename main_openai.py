@@ -8,13 +8,13 @@ import torch
 import pickle
 import argparse
 import numpy as np
-import torch.optim as optim
 import torch.nn as nn
+import torch.optim as optim
 
-from model import openai_actor, openai_critic
-from replay_buffer import ReplayBuffer
 from arguments import parse_args
+from replay_buffer import ReplayBuffer
 import multiagent.scenarios as scenarios
+from model import openai_actor, openai_critic
 from multiagent.environment import MultiAgentEnv
 
 def make_env(scenario_name, arglist, benchmark=False):
@@ -110,25 +110,16 @@ def agents_train(arglist, game_step, update_cnt, memory, obs_size, action_size, 
 
             # use the data to update the ACTOR
             # There is no need to cal other agent's action
-            # policy_all = [actors_cur[ac_idx](obs_n_o[:, obs_size[ac_idx][0]:obs_size[ac_idx][1]], batch_flag=True) \
-            #     for ac_idx in range(actors_cur.__len__())]
-            # policy_actor = torch.cat(policy_all, dim=1)
-            #agent_own_policy = policy_all[agent_idx].detach().cpu().numpy()
-            #loss_pse = 1e-3*np.mean(np.power(agent_own_policy, 2))
-            policy_c_new = actor_c(obs_n_o[:, obs_size[agent_idx][0]:obs_size[agent_idx][1]])
+            model_out, policy_c_new = actor_c( \
+                obs_n_o[:, obs_size[agent_idx][0]:obs_size[agent_idx][1]], model_original_out=True)
             action_cur_o[:, action_size[agent_idx][0]:action_size[agent_idx][1]] = policy_c_new 
-            loss_pse = torch.mean(torch.pow(policy_c_new, 2))
+            loss_pse = torch.mean(torch.pow(model_out, 2))
             loss_a = torch.mul(-1, torch.mean(critic_c(obs_n_o, action_cur_o)))
+
             opt_a.zero_grad()
             (1e-3*loss_pse+loss_a).backward()
             nn.utils.clip_grad_norm_(actor_c.parameters(), arglist.max_grad_norm)
             opt_a.step()
-
-            # record the data
-            # file_text = open('logs/loss_record_{}'.format(agent_idx), 'a')
-            # file_text.writelines('actor loss:{} critic loss:{} action_mse:{} \n'.format(loss_a.detach().cpu().numpy(), \
-            #      loss_c.detach().cpu().numpy(), policy_all[agent_idx][0], dim=0).detach().cpu().numpy()))
-            # file_text.close()
 
         # save the model to the path_dir ---cnt by update number
         if update_cnt > arglist.start_save_model and update_cnt % arglist.fre4save_model == 0:
@@ -175,20 +166,16 @@ def train(arglist):
     print('=============================')
 
     """step3: init the pars """
+    obs_size = []
+    action_size = []
     game_step = 0
-    collision_cnt = 0
     episode_cnt = 0
-    obs_n = env.reset()
     update_cnt = 0
     t_start = time.time()
     rew_n_old = [0.0 for _ in range(env.n)] # set the init reward
-    final_ep_rewards = [] # sum of rewards for training curve
-    final_ep_ag_rewards = [] # agent rewards for training curve
     agent_info = [[[]]] # placeholder for benchmarking info
     episode_rewards = [0.0] # sum of rewards for all agents
     agent_rewards = [[0.0] for _ in range(env.n)] # individual agent reward
-    obs_size = []
-    action_size = []
     head_o, head_a, end_o, end_a = 0, 0, 0, 0
     for obs_shape, action_shape in zip(obs_shape_n, action_shape_n):
         end_o = end_o + obs_shape
@@ -202,6 +189,7 @@ def train(arglist):
 
     print('=3 starting iterations ...')
     print('=============================')
+    obs_n = env.reset()
 
     for episode_gone in range(arglist.max_episode):
         # cal the reward print the debug data
