@@ -11,8 +11,6 @@ class abstract_agent(nn.Module):
     
     def act(self, input):
         policy, value = self.forward(input) # flow the input through the nn
-        # policy = F.softmax(policy) # use softmax to get the policy
-        # action_out = policy.multinomial(1) # get the max action
         return policy, value
 
 class actor_agent(abstract_agent):

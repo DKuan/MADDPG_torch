@@ -1,6 +1,7 @@
 # Time: 2019-11-05
 # Author: Zachary 
 # Name: MADDPG_torch
+# File func: main func
 import os
 
 import time
@@ -30,6 +31,9 @@ def make_env(scenario_name, arglist, benchmark=False):
     return env
 
 def get_trainers(env, num_adversaries, obs_shape_n, action_shape_n, arglist):
+    """
+    init the trainers or load the old model
+    """
     actors_cur = [None for _ in range(env.n)]
     critics_cur = [None for _ in range(env.n)]
     actors_tar = [None for _ in range(env.n)]
@@ -43,6 +47,7 @@ def get_trainers(env, num_adversaries, obs_shape_n, action_shape_n, arglist):
             trainers_cur[idx] = torch.load(arglist.old_model_name+'c_{}'.format(agent_idx))
             trainers_tar[idx] = torch.load(arglist.old_model_name+'t_{}'.format(agent_idx))
 
+    # Note: if you need load old model, there should be a procedure for juding if the trainers[idx] is None
     for i in range(env.n):
         actors_cur[i] = openai_actor(obs_shape_n[i], action_shape_n[i], arglist).to(arglist.device)
         critics_cur[i] = openai_critic(sum(obs_shape_n), sum(action_shape_n), arglist).to(arglist.device)
@@ -57,6 +62,9 @@ def get_trainers(env, num_adversaries, obs_shape_n, action_shape_n, arglist):
 def update_trainers(agents_cur, agents_tar, tao):
     """
     update the trainers_tar par using the trainers_cur
+    This way is not the same as copy_, but the result is the same
+    out:
+    |agents_tar: the agents with new par updated towards agents_current
     """
     for agent_c, agent_t in zip(agents_cur, agents_tar):
         key_list = list(agent_c.state_dict().keys())
@@ -83,15 +91,16 @@ def agents_train(arglist, game_step, update_cnt, memory, obs_size, action_size, 
         # update the target par using the cur
         update_cnt += 1
 
+        # update every agent in different memory batch
         for agent_idx, (actor_c, actor_t, critic_c, critic_t, opt_a, opt_c) in \
             enumerate(zip(actors_cur, actors_tar, critics_cur, critics_tar, optimizers_a, optimizers_c)):
             if opt_c == None: continue # jump to the next model update
 
             # sample the experience
             _obs_n_o, _action_n, _rew_n, _obs_n_n, _done_n = memory.sample( \
-                arglist.batch_size, agent_idx)
+                arglist.batch_size, agent_idx) # Note_The func is not the same as others
                 
-            # use the date to update the CRITIC
+            # --use the date to update the CRITIC
             rew = torch.tensor(_rew_n, device=arglist.device, dtype=torch.float) # set the rew to gpu
             done_n = torch.tensor(~_done_n, dtype=torch.float, device=arglist.device) # set the rew to gpu
             action_cur_o = torch.from_numpy(_action_n).to(arglist.device, torch.float)
@@ -99,19 +108,20 @@ def agents_train(arglist, game_step, update_cnt, memory, obs_size, action_size, 
             obs_n_n = torch.from_numpy(_obs_n_n).to(arglist.device, torch.float)
             action_tar = torch.cat([a_t(obs_n_n[:, obs_size[idx][0]:obs_size[idx][1]]).detach() \
                 for idx, a_t in enumerate(actors_tar)], dim=1)
-            q = critic_c(obs_n_o, action_cur_o).reshape(-1)
-            q_ = critic_t(obs_n_n, action_tar).reshape(-1)
-            tar_value = q_*arglist.gamma*done_n + rew
-            loss_c = torch.nn.MSELoss()(q, tar_value)
+            q = critic_c(obs_n_o, action_cur_o).reshape(-1) # q 
+            q_ = critic_t(obs_n_n, action_tar).reshape(-1) # q_ 
+            tar_value = q_*arglist.gamma*done_n + rew # q_*gamma*done + reward
+            loss_c = torch.nn.MSELoss()(q, tar_value) # bellman equation
             opt_c.zero_grad()
             loss_c.backward()
             nn.utils.clip_grad_norm_(critic_c.parameters(), arglist.max_grad_norm)
             opt_c.step()
 
-            # use the data to update the ACTOR
+            # --use the data to update the ACTOR
             # There is no need to cal other agent's action
             model_out, policy_c_new = actor_c( \
                 obs_n_o[:, obs_size[agent_idx][0]:obs_size[agent_idx][1]], model_original_out=True)
+            # update the aciton of this agent
             action_cur_o[:, action_size[agent_idx][0]:action_size[agent_idx][1]] = policy_c_new 
             loss_pse = torch.mean(torch.pow(model_out, 2))
             loss_a = torch.mul(-1, torch.mean(critic_c(obs_n_o, action_cur_o)))
