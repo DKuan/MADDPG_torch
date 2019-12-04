@@ -20,7 +20,7 @@ def make_env(scenario_name, arglist, benchmark=False):
         env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
     return env
 
-def get_trainers(env, obs_shape_n, action_size, arglist):
+def get_trainers(env, arglist):
     trainers_cur = []
     trainers_tar = []
     optimizers = []
@@ -44,7 +44,7 @@ def enjoy(arglist):
 
     """ init the agents """
     obs_shape_n = [env.observation_space[i].shape for i in range(env.n)]
-    actors_tar = get_trainers(env, obs_shape_n, arglist.action_size, arglist)
+    actors_tar = get_trainers(env, arglist)
 
     """ interact with the env """
     obs_n = env.reset()
