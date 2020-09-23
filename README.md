@@ -36,3 +36,4 @@ Step 3: Run the 'main_openai.py' with 'python main_openai.py --scenario_name sim
 ## Link for blog
 OpenAI MPE: https://github.com/openai/multiagent-particle-envs    
 The explorer of Game AI: https://zhuanlan.zhihu.com/c_186658689    
+
