@@ -65,7 +65,7 @@ def enjoy(arglist):
             print(obs_n)
 
         # interact with env
-        new_obs_n, rew_n, done_n, info_n = env.step(action_n)
+        obs_n, rew_n, done_n, info_n = env.step(action_n)
 
         # update the flag
         done = all(done_n)
