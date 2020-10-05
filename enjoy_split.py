@@ -2,6 +2,7 @@ import os
 import sys
 
 import torch
+import torch.nn.functional as F
 import multiagent.scenarios as scenarios
 from multiagent.environment import MultiAgentEnv
 
@@ -54,18 +55,13 @@ def enjoy(arglist):
         episode_step += 1
 
         # get action
-        try:
-            action_n = []
-            # action_n = [agent.actor(torch.from_numpy(obs).to(arglist.device, torch.float)).numpy() \
-            # for agent, obs in zip(trainers_cur, obs_n)]
-            for actor, obs in zip(actors_tar, obs_n):
-                action = torch.clamp(actor(torch.from_numpy(obs).to(arglist.device, torch.float)), -1, 1)
-                action_n.append(action)
-        except:
-            print(obs_n)
+        action_n = []
+        for actor, obs in zip(actors_tar, obs_n):
+            model_out,_ = actor(torch.from_numpy(obs).to(arglist.device, torch.float),model_original_out=True)
+            action_n.append(F.softmax(model_out,dim=-1).detach().cpu().numpy())
 
         # interact with env
-        new_obs_n, rew_n, done_n, info_n = env.step(action_n)
+        obs_n, rew_n, done_n, info_n = env.step(action_n)
 
         # update the flag
         done = all(done_n)
